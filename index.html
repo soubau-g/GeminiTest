@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 계정 코드 분류기</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* Apply a modern Korean font */
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen py-8">
+
+    <div class="w-full max-w-md mx-auto bg-white rounded-xl shadow-lg p-8 space-y-6">
+        
+        <!-- Header Section -->
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-gray-800">AI 계정 코드 분류기</h1>
+            <p class="text-gray-500 mt-2">지출 내역과 계정 코드를 입력하면 AI가 자동으로 분류해줍니다.</p>
+        </div>
+
+        <!-- Expense Input Section -->
+        <div>
+            <label for="expense-input" class="block text-sm font-medium text-gray-700 mb-1">지출 내역</label>
+            <textarea id="expense-input" rows="4" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" placeholder="예: 부산 출장 KTX 왕복 티켓 11만원"></textarea>
+        </div>
+
+        <!-- Custom Account Codes Input Section -->
+        <div>
+            <label for="account-codes-input" class="block text-sm font-medium text-gray-700 mb-1">사용자 지정 계정 코드 (쉼표로 구분)</label>
+            <input type="text" id="account-codes-input" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" value="식비, 소모품비, 여비교통비">
+        </div>
+
+        <!-- Action Button -->
+        <button id="classify-button" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105">
+            분류하기
+        </button>
+
+        <!-- Result Section -->
+        <div>
+            <h2 class="text-lg font-semibold text-gray-800">분류 결과:</h2>
+            <div id="result-box" class="mt-2 p-4 min-h-[50px] bg-gray-50 border-l-4 border-gray-300 rounded-r-lg flex items-center justify-center">
+                <p id="result-text" class="text-gray-500 text-center font-medium">결과가 여기에 표시됩니다.</p>
+            </div>
+        </div>
+        
+    </div>
+
+    <script>
+        // --- Configuration ---
+        // IMPORTANT: Replace "YOUR_API_KEY" with your actual Google AI Studio API key.
+        const API_KEY = "AIzaSyAOhRI8PAMxAGHqyoquOK7sYCybNaLjnMA"; // 코드를 수정할 때 이 API 키는 그대로 유지해 주세요
+
+        // --- DOM Elements ---
+        const classifyButton = document.getElementById('classify-button');
+        const expenseInput = document.getElementById('expense-input');
+        const accountCodesInput = document.getElementById('account-codes-input');
+        const resultBox = document.getElementById('result-box');
+        const resultText = document.getElementById('result-text');
+
+        // --- Event Listener ---
+        classifyButton.addEventListener('click', handleClassification);
+        expenseInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault(); // Prevent new line on Enter
+                handleClassification();
+            }
+        });
+
+
+        /**
+         * Handles the classification process when the button is clicked.
+         */
+        async function handleClassification() {
+            if (!API_KEY) {
+                displayError("오류: API 키를 입력해주세요.");
+                return;
+            }
+
+            const expense = expenseInput.value.trim();
+            const accountCodes = accountCodesInput.value.trim();
+
+            if (!expense) {
+                displayError("지출 내역을 입력해주세요.", 'yellow');
+                return;
+            }
+            if (!accountCodes) {
+                displayError("계정 코드를 입력해주세요.", 'yellow');
+                return;
+            }
+
+            // Show loading state
+            setLoadingState(true);
+
+            try {
+                // Construct the prompt for the Gemini API using custom account codes
+                const prompt = `
+                    당신은 회사의 재정 담당자입니다.
+                    주어진 지출에 맞는 계정 코드를 선택해 주세요.
+                    결과는 계정 코드 하나만 입력해 주세요.
+
+                    가능한 계정 코드: ${accountCodes}
+                    예시: “냉면 2만원” > “식비”
+                    
+                    지출 내역: "${expense}"
+                `;
+
+                // Call the Gemini API
+                const response = await callGeminiAPI(prompt);
+                
+                // Display the result
+                displayResult(response);
+
+            } catch (error) {
+                console.error("Error during API call:", error);
+                displayError("API 호출 중 오류가 발생했습니다. 콘솔을 확인해주세요.");
+            } finally {
+                // End loading state
+                setLoadingState(false);
+            }
+        }
+
+        /**
+         * Calls the Gemini 2.5 Flash API.
+         * @param {string} prompt - The prompt to send to the model.
+         * @returns {Promise<string>} The model's response text.
+         */
+        async function callGeminiAPI(prompt) {
+            // Updated to use the official 'gemini-2.5-flash' model alias
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+            
+            const requestBody = {
+                contents: [{
+                    parts: [{
+                        text: prompt
+                    }]
+                }]
+            };
+
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.json();
+                throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorBody.error.message}`);
+            }
+
+            const data = await response.json();
+            
+            if (data.candidates && data.candidates.length > 0 && data.candidates[0].content.parts.length > 0) {
+                 return data.candidates[0].content.parts[0].text.trim();
+            } else {
+                // Handle cases where the response structure is unexpected
+                throw new Error("API 응답 형식이 올바르지 않습니다.");
+            }
+        }
+
+        /**
+         * Updates the UI to show the final result.
+         * @param {string} text - The result text to display.
+         */
+        function displayResult(text) {
+            resultText.textContent = text;
+            resultBox.className = 'mt-2 p-4 min-h-[50px] bg-green-50 border-l-4 border-green-500 rounded-r-lg flex items-center justify-center';
+        }
+        
+        /**
+         * Updates the UI to show an error or warning message.
+         * @param {string} message - The message to display.
+         * @param {string} type - The type of message ('red' for error, 'yellow' for warning).
+         */
+        function displayError(message, type = 'red') {
+            resultText.textContent = message;
+            if (type === 'red') {
+                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-red-50 border-l-4 border-red-400 rounded-r-lg flex items-center justify-center';
+            } else {
+                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg flex items-center justify-center';
+            }
+        }
+
+        /**
+         * Toggles the loading state of the UI.
+         * @param {boolean} isLoading - Whether to show the loading state.
+         */
+        function setLoadingState(isLoading) {
+            if (isLoading) {
+                classifyButton.disabled = true;
+                classifyButton.textContent = '분류 중...';
+                classifyButton.classList.add('opacity-50', 'cursor-not-allowed');
+                resultText.textContent = 'AI가 분석하고 있습니다...';
+                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-blue-50 border-l-4 border-blue-400 rounded-r-lg flex items-center justify-center animate-pulse';
+            } else {
+                classifyButton.disabled = false;
+                classifyButton.textContent = '분류하기';
+                classifyButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                resultBox.classList.remove('animate-pulse');
+            }
+        }
+    </script>
+</body>
+</html>
