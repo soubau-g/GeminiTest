@@ -46,8 +46,21 @@
         <!-- Result Section -->
         <div>
             <h2 class="text-lg font-semibold text-gray-800">분류 결과:</h2>
-            <div id="result-box" class="mt-2 p-4 min-h-[50px] bg-gray-50 border-l-4 border-gray-300 rounded-r-lg flex items-center justify-center">
-                <p id="result-text" class="text-gray-500 text-center font-medium">결과가 여기에 표시됩니다.</p>
+            <div id="result-box" class="mt-2 p-4 min-h-[50px] bg-gray-50 border-l-4 border-gray-300 rounded-r-lg">
+                <ul id="result-list" class="list-none p-0 m-0"><li>결과가 여기에 표시됩니다.</li></ul>
+            </div>
+        </div>
+
+        <!-- History Section -->
+        <div class="mt-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-gray-800">분류 기록</h2>
+                <button id="clear-history-button" class="text-sm text-red-500 hover:text-red-700 font-medium">기록 지우기</button>
+            </div>
+            <div id="history-container" class="mt-2 p-4 max-h-48 overflow-y-auto bg-gray-50 border rounded-lg">
+                <ul id="history-list" class="list-none p-0 m-0 space-y-2">
+                    <li class="text-gray-500">기록이 없습니다.</li>
+                </ul>
             </div>
         </div>
         
@@ -57,16 +70,21 @@
         // --- Configuration ---
         // IMPORTANT: Replace "YOUR_API_KEY" with your actual Google AI Studio API key.
         const API_KEY = "AIzaSyAOhRI8PAMxAGHqyoquOK7sYCybNaLjnMA"; // 코드를 수정할 때 이 API 키는 그대로 유지해 주세요
+        const HISTORY_KEY = 'classificationHistory'; // Key for localStorage
 
         // --- DOM Elements ---
         const classifyButton = document.getElementById('classify-button');
         const expenseInput = document.getElementById('expense-input');
         const accountCodesInput = document.getElementById('account-codes-input');
         const resultBox = document.getElementById('result-box');
-        const resultText = document.getElementById('result-text');
+        const resultList = document.getElementById('result-list');
+        const historyList = document.getElementById('history-list');
+        const clearHistoryButton = document.getElementById('clear-history-button');
 
         // --- Event Listener ---
+        document.addEventListener('DOMContentLoaded', loadHistory);
         classifyButton.addEventListener('click', handleClassification);
+        clearHistoryButton.addEventListener('click', clearHistory);
         expenseInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault(); // Prevent new line on Enter
@@ -116,7 +134,8 @@
                 const response = await callGeminiAPI(prompt);
                 
                 // Display the result
-                displayResult(response);
+                displayResult(expense, response); // Pass both expense and response
+                addHistoryItem(expense, response);
 
             } catch (error) {
                 console.error("Error during API call:", error);
@@ -133,8 +152,8 @@
          * @returns {Promise<string>} The model's response text.
          */
         async function callGeminiAPI(prompt) {
-            // Updated to use the official 'gemini-2.5-flash' model alias
-            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+            // Corrected the model name to the official 'gemini-2.5-flash'
+            const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
             
             const requestBody = {
                 contents: [{
@@ -168,12 +187,24 @@
         }
 
         /**
+         * Clears the content of the result list.
+         */
+        function clearResultList() {
+            resultList.innerHTML = '';
+        }
+
+        /**
          * Updates the UI to show the final result.
+         * @param {string} expense - The expense text.
          * @param {string} text - The result text to display.
          */
-        function displayResult(text) {
-            resultText.textContent = text;
-            resultBox.className = 'mt-2 p-4 min-h-[50px] bg-green-50 border-l-4 border-green-500 rounded-r-lg flex items-center justify-center';
+        function displayResult(expense, text) {
+            clearResultList(); // Clear previous content first
+            const listItem = document.createElement('li');
+            listItem.textContent = `${expense}: ${text}`;
+            resultList.appendChild(listItem);
+            resultBox.className = 'mt-2 p-4 min-h-[50px] bg-green-50 border-l-4 border-green-500 rounded-r-lg';
+            expenseInput.value = ''; // Clear input for next use
         }
         
         /**
@@ -182,11 +213,15 @@
          * @param {string} type - The type of message ('red' for error, 'yellow' for warning).
          */
         function displayError(message, type = 'red') {
-            resultText.textContent = message;
+            clearResultList(); // Clear previous content first
+            const listItem = document.createElement('li');
+            listItem.textContent = message;
+            resultList.appendChild(listItem);
+
             if (type === 'red') {
-                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-red-50 border-l-4 border-red-400 rounded-r-lg flex items-center justify-center';
-            } else {
-                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg flex items-center justify-center';
+                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-red-50 border-l-4 border-red-400 rounded-r-lg';
+            } else if (type === 'yellow') {
+                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg';
             }
         }
 
@@ -199,8 +234,9 @@
                 classifyButton.disabled = true;
                 classifyButton.textContent = '분류 중...';
                 classifyButton.classList.add('opacity-50', 'cursor-not-allowed');
-                resultText.textContent = 'AI가 분석하고 있습니다...';
-                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-blue-50 border-l-4 border-blue-400 rounded-r-lg flex items-center justify-center animate-pulse';
+                clearResultList();
+                resultList.innerHTML = '<li>AI가 분석하고 있습니다...</li>';
+                resultBox.className = 'mt-2 p-4 min-h-[50px] bg-gray-50 border-l-4 border-gray-300 rounded-r-lg animate-pulse';
             } else {
                 classifyButton.disabled = false;
                 classifyButton.textContent = '분류하기';
@@ -208,6 +244,77 @@
                 resultBox.classList.remove('animate-pulse');
             }
         }
+
+        // --- History Functions ---
+
+        /**
+         * Loads and displays the classification history from localStorage.
+         */
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+            historyList.innerHTML = ''; // Clear current list
+
+            if (history.length === 0) {
+                historyList.innerHTML = '<li class="text-gray-500">기록이 없습니다.</li>';
+                return;
+            }
+
+            history.forEach(item => {
+                const listItem = document.createElement('li');
+                // Added cursor-pointer and a click event to reload the expense
+                listItem.className = 'text-sm text-gray-700 p-1 hover:bg-gray-100 rounded cursor-pointer';
+                listItem.textContent = `${item.expense}: ${item.result}`;
+                listItem.addEventListener('click', () => {
+                    expenseInput.value = item.expense;
+                    expenseInput.focus(); // Focus on the input for better UX
+                });
+                historyList.appendChild(listItem);
+            });
+        }
+
+        /**
+         * Adds a new item to the classification history.
+         * @param {string} expense - The expense text.
+         * @param {string} result - The classification result.
+         */
+        function addHistoryItem(expense, result) {
+            let history = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+            const newItem = { expense, result, timestamp: new Date().toISOString() };
+
+            history.unshift(newItem); // Add new item to the beginning
+
+            // Limit history to 50 items
+            if (history.length > 50) {
+                history = history.slice(0, 50);
+            }
+
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+            loadHistory(); // Refresh the displayed history
+        }
+
+        /**
+         * Clears all items from the classification history.
+         */
+        function clearHistory() {
+            if (confirm('정말로 모든 기록을 지우시겠습니까?')) {
+                localStorage.removeItem(HISTORY_KEY);
+                loadHistory(); // Refresh the (now empty) list
+            }
+        }
     </script>
 </body>
 </html>
+
+<!--
+[PROMPT_SUGGESTION]결과가 너무 길어지면 스크롤이 생기도록 result-box 스타일을 변경해 주세요[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]분류 결과를 저장하고 불러오는 기능을 추가해주세요[/PROMPT_SUGGESTION]
+-->
+
+<!--
+[PROMPT_SUGGESTION]분류 결과를 더 보기 좋게 꾸며주세요[/PROMPT_SUGGESTION]
+[PROMPT_SUGGESTION]최근 분류 결과만 보여주는 기능을 추가해주세요[/PROMPT_SUGGESTION]
+-->
+
+<!--
+[PROMPT_SUGGESTION]결과가 너무 길어지면 스크롤이 생기도록 result-box 스타일을 변경해 주세요[/PROMPT_SUGGESTION]
+-->
